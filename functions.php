@@ -460,6 +460,553 @@ add_filter( 'woocommerce_order_item_permalink', '__return_false' );
 /* ODBLOKUJ STANDARDOWE CUSTOM FIELDY */
 add_filter('acf/settings/remove_wp_meta_box', '__return_false');
 
+/* AJAX FILTERS */
+
+function global_enqueues() {
+	wp_enqueue_script(
+		'global',
+		get_template_directory_uri() . '/js/main.js',
+		array(),
+		'1.0.0'
+	);
+
+	wp_localize_script(
+		'global',
+		'global',
+		array(
+			'ajax' => admin_url( 'admin-ajax.php' ),
+		)
+	);
+}
+add_action( 'wp_enqueue_scripts', 'global_enqueues' );
+
+function filter_data() {
+	
+	$medium_type = $_POST['medium_type'];
+	$naklad_sort =  $_POST['naklad_sort'];
+	$choose_province =  $_POST['choose_province'];
+
+	$args = array(
+		'post_type' => 'product',
+		'posts_per_page' => 50,
+		'post_status' => 'publish',
+		'meta_query' => array(
+			array(
+				'key' => '_stock_status',
+				'value' => 'instock'
+			),
+			array(
+				'key' => '_backorders',
+				'value' => 'no'
+			),
+		)
+	);
+	
+	if (isset($_POST['offset'])) {
+		$args['offset'] = $_POST['offset'];
+	}
+
+	if ($medium_type !== '') {
+		$args['tax_query'] = array(
+									array(
+										'taxonomy'  => 'product_cat',
+										'field'     => 'id', 
+										'terms'     => [$medium_type]
+									)
+							);
+	}
+	
+	if ($naklad_sort == 'sort_down') {
+		$args['meta_key'] = 'naklad_odwiedziny';
+		$args['orderby'] = 'meta_value_num';	
+		$args['order'] = 'DESC';	
+	}
+	
+	if ($naklad_sort == 'sort_up') {
+		$args['meta_key'] = 'naklad_odwiedziny';
+		$args['orderby'] = 'meta_value_num';	
+		$args['order'] = 'ASC';		
+	}
+	
+	if ($choose_province !== '') {
+		$args['meta_query'][] = 
+									array(
+										'key' => 'wojewodztwo',
+										'compare' => 'LIKE',
+										'value' => '"'.$choose_province.'\"'
+									);
+							 			
+	}
+	
+	$loop = new WP_Query( $args );
+	
+
+	
+	if ( $loop->have_posts() ) {
+		while ( $loop->have_posts() ) : $loop->the_post();	
+			global $product;		
+;?>
+
+	<tr id="product-<?php the_ID(); ?>" pid="<?php the_ID(); ?>" <?php wc_product_class( '', $product ); ?>  style="color: black;" class="div_table">
+
+		<td class="div_table--nazwa div_cell" style="display: flex; justify-content: center; align-items: center; flex-direction: column;">
+		
+			<?php 
+				$image = get_post_meta($product->id, 'image', true);
+				if ($image) {
+			?>
+			
+			<div class="mouse_over_to_image">
+				<div style="padding: 5px 0;"><?php echo $product->get_name();?></div>
+				<img src="<?php echo $image;?>" style="width: 60px; height: 60px; object-fit: cover;">
+			</div>
+			<div class="hidden_list_img"><img src="<?php echo $image;?>" style="width: 200px;"></div>
+			
+			<?php };?>
+		
+		</td>
+
+		<td class="div_table--naklad div_cell"><?php echo get_post_meta($product->id,'naklad_odwiedziny',true);?></td>
+		<td class="div_table--region div_cell">
+		
+			<?php 
+				$markers = json_decode(wp_unslash(get_post_meta($product->id,'lokalizacja_medium',true)),true);
+				if ($markers) {
+					foreach ($markers as $marker) {
+						echo "<li>".str_replace(['Polska','województwo'],'',$marker)."</li>";
+					}
+				}
+			?>
+		
+		</td>
+		<td class="div_table--redakcja div_cell">
+			<?php 
+			$name = get_post_meta($product->id,'nazwa',true);
+			$url = get_post_meta($product->id,'adres_url',true);
+			$description = get_post_meta($product->id,'short_description',true);
+			
+			echo $name."<br>";
+			
+			$parse = parse_url($url);
+			if($parse['scheme'] == 'http' || $parse['scheme'] == 'https' ) {
+				echo "<a href='".$url."' target='_blank'>".$url."</a>";
+			} else {
+				echo $url;
+			}
+			;?>
+			<div style="color: blue; position: relative;" class="read_more_about_redaction">
+				Czytaj opis ...
+			</div>
+			<div class="read_more_about_redaction_data">
+				<?php echo $description;?>
+			</div>
+		</td>
+		
+		<td class="div_table--obraz"></td>
+		
+		<?php
+		
+			$attribute_keys  = array_keys( $product->get_attributes() );
+			$available_variations = $product->get_available_variations();
+			$variations_json = wp_json_encode( $available_variations );
+			$variations_attr = function_exists( 'wc_esc_json' ) ? wc_esc_json( $variations_json ) : _wp_specialchars( $variations_json, ENT_QUOTES, 'UTF-8', true );
+			
+			$variations_decode = json_decode($variations_json,true);
+			$attributes = array();
+			foreach ($variations_decode as $attr) {
+				$key = 'attribute_'.$attribute_keys[0];
+				$attributes[$attribute_keys[0]][]=  $attr['attributes'][$key];
+			}
+			
+			do_action( 'woocommerce_before_add_to_cart_form' ); ?>
+
+			<td class="td_form">
+			<form class="variations_form cart" method="post" enctype='multipart/form-data' data-product_id="<?php echo absint( $product->get_id() ); ?>" data-product_variations="<?php echo $variations_attr; // WPCS: XSS ok. ?>">
+				<?php do_action( 'woocommerce_before_variations_form' ); ?>
+
+				<?php if ( empty( $available_variations ) && false !== $available_variations ) : ?>
+					<p class="stock out-of-stock"><?php echo esc_html( apply_filters( 'woocommerce_out_of_stock_message', __( 'This product is currently out of stock and unavailable.', 'woocommerce' ) ) ); ?></p>
+				<?php else : ?>
+				
+				<div>
+					<div style="display: flex; align-items: center;">
+						<div class="variations div_cell" cellspacing="0">
+						
+								<?php foreach ( $attributes as $attribute_name => $options ) : ?>
+
+										<div class="div_table--dynamic_clear">
+											<?php
+												wc_dropdown_variation_attribute_options(
+													array(
+														'options'   => $options,
+														'attribute' => $attribute_name,
+														'product'   => $product,
+													)
+												);
+											?>
+										</div>
+								
+								<?php endforeach; ?>
+
+						</div>
+						<div>
+						<?php 
+							/* ŁADUJE JSA OD CEN WARIANTÓW */
+							do_action( 'woocommerce_single_variation' );
+						?>
+							
+							<?php echo $product->get_price_html(); // PHPCS:Ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+
+							<script type="text/template" id="tmpl-variation-template">
+								<div class="woocommerce-variation-description">{{{ data.variation.variation_description }}}</div>
+								<div class="woocommerce-variation-price">{{{ data.variation.price_html }}}</div>
+								<div class="woocommerce-variation-availability">{{{ data.variation.availability_html }}}</div>
+							</script>
+							<script type="text/template" id="tmpl-unavailable-variation-template">
+								<p><?php esc_html_e( 'Sorry, this product is unavailable. Please choose a different combination.', 'woocommerce' ); ?></p>
+							</script>
+							
+						</div>
+						
+						<?php /* PRZYCISK WYCZYŚĆ WARIACJE */ /* echo end( $attribute_keys ) === $attribute_name ? wp_kses_post( apply_filters( 'woocommerce_reset_variations_link', '<a class="reset_variations" href="#">' . esc_html__( 'Clear', 'woocommerce' ) . '</a>' ) ) : '' */;?>
+
+					</div>
+				
+					<div class="div_table--obraz div_cell">
+						<?php 
+							/* META - OBRAZ */
+							do_action( 'woocommerce_before_add_to_cart_button' );
+							
+						?>
+					</div>
+					
+				</div>
+			
+				<div class="publication_day_wrapper">
+					<div class="div_cell">
+						<?php 
+						
+							/* JAK GAZETA TO OBLICZAJ DATY I NAZWY DNI WYDAWANIA */
+							$day_number = get_post_meta($product->get_id(),'dzien_wydania',true);
+							$publishing_frequency = get_post_meta($product->get_id(),'czestotliwosc_wydawania',true);
+							
+							$php_days = ['','Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+							$days = ['','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+							$days_polish_portal = ['','Pon','Wt','Śr','Czw','Pt','Sb','Nd'];
+							$days_polish_gazeta = ['','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota','Niedziela'];
+							
+							// Create a new DateTime object
+							$date = new DateTime();
+								
+							if ($day_number !== '') {
+								
+								// Modify the date it contains
+								$next_date_of_publishing = $date->modify('next '.$days[$day_number]);
+								// Output
+								$nearest_day = $next_date_of_publishing->format('Y-m-d');
+							
+						;?>
+						
+						<div class='day_name'>Dzień publikacji</div>
+						<select class="publication_day">
+							<?php 
+								$i = 1;
+								for ($i;$i<17;$i++) {
+
+									$forecast = $i * $publishing_frequency;
+	
+									$date_numbers = date('D d-m-Y', strtotime($nearest_day."+".$forecast." days"));
+									$convert_eng_to_pl_day_name = str_replace($php_days,$days_polish_portal,$date_numbers);
+									echo '<option>'.$convert_eng_to_pl_day_name.'</option>';
+								}
+							;?>
+						</select>
+						
+						<?php
+
+							} else {
+								/* JAK PORTAL TO DAWAJ WSZYSTKIE NA TYDZIEŃ W PRZÓD */
+								/* Dzisiaj +7 dni */
+								$nearest_day_of_banner_publishing = $date->modify('+10 days');
+								$nearest_day = $nearest_day_of_banner_publishing->format('Y-m-d');
+								/* Od tego czasu +1 dzień */
+						;?>
+						
+							<div class='day_name'>Rozpoczęcie publikacji</div>
+							<select class="publication_day">
+							<?php 
+								$i = 1;
+								for ($i;$i<30;$i++) {
+									$date_numbers = date('D d-m-Y', strtotime($nearest_day."+".$i." days"));
+									$convert_eng_to_pl_day_name = str_replace($php_days,$days_polish_portal,$date_numbers);
+									echo '<option>'.$convert_eng_to_pl_day_name.'</option>';
+								}
+							;?>
+							</select>
+						
+						<?php
+								
+								
+							};
+													
+						;?>
+					</div>	
+				</div>	
+			
+				<div class="div_cell woocommerce-variation-add-to-cart variations_button">
+			
+					<button type="submit" class="single_add_to_cart_button button alt"><i class="fas fa-cart-arrow-down"></i></button>
+
+					<?php do_action( 'woocommerce_after_add_to_cart_button' ); ?>
+
+					<input type="hidden" name="add-to-cart" value="<?php echo absint( $product->get_id() ); ?>" />
+					<input type="hidden" name="product_id" value="<?php echo absint( $product->get_id() ); ?>" />
+					<input type="hidden" name="variation_id" class="variation_id" value="0" />
+				
+				</div>
+										
+				<?php endif; ?>
+
+				<?php do_action( 'woocommerce_after_variations_form' ); ?>
+			</form>
+			</td>
+
+			<?php
+			do_action( 'woocommerce_after_add_to_cart_form' );
+		
+		?>
+		
+	</tr>	
+				
+				
+	<?php		
+			endwhile;
+
+	/*
+			echo "<tr class='product'><td colspan=8><div>";
+			highlight_string("<?php\n\$data =\n" . var_export($loop, true) . ";\n?>");
+			echo "</div></td></tr>";
+	*/
+				
+		} else {
+			echo __( '<tr class="no_results"><td colspan=8 style="padding: 0"></td></tr>' );
+		}
+
+		wp_reset_postdata();
+		
+	wp_die();
+}
+
+add_action( 'wp_ajax_filter_data', 'filter_data' );
+add_action( 'wp_ajax_nopriv_filter_data', 'filter_data' );
+
+function product_variation_add_to_cart() {
+   
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		if ( ! isset( $_POST['product_id'] ) ) {
+			return;
+		}
+
+		$cart_item_data = $_POST['cart_item_data'];
+		$product_id = (int) $_POST['product_id'];
+		$variation_id = (int) $_POST['vid'];
+        $quantity     = 1;
+        $attributes   = explode(',', $_POST['var']);
+        $variation    = array();
+        foreach($attributes as $values){
+            $values = explode('=', $values);
+            $variation['attributes_'.$values[0]] = $values[1];
+        }
+		
+        $check = WC()->cart->add_to_cart( $product_id, $quantity, $variation_id, $variation, $cart_item_data );
+		
+		echo json_encode($check);
+
+		die();
+   
+}
+// Wordpress Ajax php: Adding variation to cart
+add_action( 'wp_ajax_nopriv_variation_to_cart', 'product_variation_add_to_cart' );
+add_action( 'wp_ajax_variation_to_cart', 'product_variation_add_to_cart' );
+
+function upi() {
+   
+    $arr_img_ext = array('image/png', 'image/jpeg', 'image/jpg', 'image/gif');
+    if (in_array($_FILES['image']['type'], $arr_img_ext)) {
+        $upload = wp_upload_bits($_FILES["image"]["name"], null, file_get_contents($_FILES["image"]["tmp_name"]));
+        wp_send_json($upload);
+    }
+		
+	die();
+   
+}
+
+add_action( 'wp_ajax_nopriv_upi', 'upi' );
+add_action( 'wp_ajax_upi', 'upi' );
+
+
+/* MULTI MARŻA / MULTI AKCEPTACJA */
+
+/****************************************************************************************************/
+/****************************************************************************************************/
+/******************************************** MARŻA PAGE ********************************************/
+/****************************************************************************************************/
+/****************************************************************************************************/
+
+add_action( 'admin_menu', 'my_admin_menu_1' );
+function my_admin_menu_1() {
+		add_menu_page(
+			__( 'Marża', 'my-textdomain' ),
+			__( 'Marża', 'my-textdomain' ),
+			'manage_options',
+			'marza',
+			'marza_page_contents',
+			'dashicons-schedule',
+			3
+		);
+	}
+
+function marza_page_contents() {
+	
+	acf_form_head();
+
+;?>
+	<h1>Ustaw wysokość marży</h1>
+<?php
+
+	$options = array(
+		'post_id' => 6558,
+		'field_groups' => array(6556),
+		'form' => true, 
+		'html_before_fields' => '',
+		'html_after_fields' => '',
+		'submit_value' => 'Ustaw narzut',
+		'updated_message' => __('Narzut ustawiony z sukcesem', 'acf')
+	);
+	acf_form( $options );
+
+	
+}
+
+/****************************************************************************************************/
+/******************************** MARŻA POST TYPE UKRYTE W MENU *************************************/
+/****************************************************************************************************/
+
+function custom_post_type_marza() {
+ 
+// Set UI labels for Custom Post Type
+    $labels = array(
+        'name'                => _x( 'Marża', 'Post Type General Name', 'viral-news' ),
+        'singular_name'       => _x( 'Marża', 'Post Type Singular Name', 'viral-news' ),
+        'menu_name'           => __( 'Marża', 'viral-news' ),
+        'parent_item_colon'   => __( 'Rodzic', 'viral-news' ),
+        'all_items'           => __( 'Wszystkie', 'viral-news' ),
+        'view_item'           => __( 'Zobacz', 'viral-news' ),
+        'add_new_item'        => __( 'Dodaj nowy', 'viral-news' ),
+        'add_new'             => __( 'Dodaj nowy', 'viral-news' ),
+        'edit_item'           => __( 'Edytuj', 'viral-news' ),
+        'update_item'         => __( 'Aktualizuj', 'viral-news' ),
+        'search_items'        => __( 'Szukaj cennika', 'viral-news' ),
+        'not_found'           => __( 'Nie znaleziono', 'viral-news' ),
+        'not_found_in_trash'  => __( 'Nie znaleziono w koszu', 'viral-news' ),
+    );
+     
+// Set other options for Custom Post Type
+     
+    $args = array(
+        'label'               => __( 'Marża', 'viral-news' ),
+        'description'         => __( 'Marża', 'viral-news' ),
+        'labels'              => $labels,
+        // Features this CPT supports in Post Editor
+        'supports'            => array( 'title', 'editor', 'excerpt', 'author', 'thumbnail', 'comments', 'revisions', 'custom-fields', ),
+        // You can associate this CPT with a taxonomy or custom taxonomy. 
+        /* 'taxonomies'          => array( 'genres' ), */
+        /* A hierarchical CPT is like Pages and can have
+        * Parent and child items. A non-hierarchical CPT
+        * is like Posts.
+        */ 
+        'hierarchical'        => false,
+        'public'              => true,
+        'show_ui'             => true,
+        'show_in_menu'        => true,
+        'show_in_nav_menus'   => true,
+        'show_in_admin_bar'   => true,
+ 
+        'can_export'          => true,
+        'has_archive'         => false,
+        'exclude_from_search' => true,
+        'publicly_queryable'  => false,
+        'capability_type'     => 'post',
+        'show_in_rest' => false,
+		'menu_icon' => 'dashicons-format-gallery'
+ 
+    );
+     
+    // Registering your Custom Post Type
+    register_post_type( 'marza', $args );
+ 
+}
+ 
+/* Hook into the 'init' action so that the function
+* Containing our post type registration is not 
+* unnecessarily executed. 
+*/
+ 
+add_action( 'init', 'custom_post_type_marza', 0 );
+
+/*******************************************************************/
+/* NADAJ NARZUT NA CENY PRZY WYŚWIETLANIU ICH WSZĘDZIE I W KOSZYKU */
+/*******************************************************************/
+ 
+add_filter( 'woocommerce_get_price_html', 'bbloomer_alter_price_display', 9999, 2 );
+ 
+function bbloomer_alter_price_display( $price_html, $product ) {
+        
+    // ONLY IF PRICE NOT NULL
+    if ( '' === $product->get_price() ) return $price_html;
+   
+        $orig_price = wc_get_price_to_display( $product );
+		
+		$marza = get_field('field_5fc53d5b16dd4',6558);
+		$marza_decimal = intval($marza)/100;
+		
+        $price_html = wc_price( $orig_price + ($orig_price * $marza_decimal) );
+ 
+    return $price_html;
+ 
+}
+ 
+/**
+ * @snippet       Alter Product Pricing Part 2 - WooCommerce Cart/Checkout
+ * @how-to        Get CustomizeWoo.com FREE
+ * @author        Rodolfo Melogli
+ * @compatible    WooCommerce 4.1
+ * @donate $9     https://businessbloomer.com/bloomer-armada/
+ */
+ 
+add_action( 'woocommerce_before_calculate_totals', 'bbloomer_alter_price_cart', 9999 );
+ 
+function bbloomer_alter_price_cart( $cart ) {
+ 
+    if ( is_admin() && ! defined( 'DOING_AJAX' ) ) return;
+ 
+    if ( did_action( 'woocommerce_before_calculate_totals' ) >= 2 ) return;
+  
+    // LOOP THROUGH CART ITEMS & APPLY MARZA
+    foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
+        $product = $cart_item['data'];
+        $price = $product->get_price();
+		
+		$marza = get_field('field_5fc53d5b16dd4',6558);
+		$marza_decimal = intval($marza)/100;
+		
+        $cart_item['data']->set_price( $price  + ($price*$marza_decimal) );
+    }
+ 
+}
+
+
+
 ;?>
 
 
