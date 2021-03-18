@@ -23,6 +23,11 @@ Ad buyer can check and compare his offer with new offer from publishers, because
 
 ![screencapture-gazeta-wokulski-online-konto-view-order-8536-2021-03-17-14_43_46](https://user-images.githubusercontent.com/35747845/111477496-76b94c80-872f-11eb-83cf-376711a4edca.png)
 
+demo:
+https://gazeta.wokulski.online
+demo
+d3M0$%(demo
+
 
 
 
