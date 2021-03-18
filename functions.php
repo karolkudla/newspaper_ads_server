@@ -1,9 +1,6 @@
 <?php
 
-$autoloader =  $_SERVER["DOCUMENT_ROOT"].'/vendor/autoload.php';
-	if ( is_readable( $autoloader ) ) {
-		require_once $autoloader;
-	};
+/* Add this to your functions.php file */
 
 use Automattic\WooCommerce\Client;
 
@@ -462,6 +459,8 @@ add_filter( 'woocommerce_order_item_permalink', '__return_false' );
 
 /* ODBLOKUJ STANDARDOWE CUSTOM FIELDY */
 add_filter('acf/settings/remove_wp_meta_box', '__return_false');
+
+;?>
 
 
 
