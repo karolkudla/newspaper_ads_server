@@ -1,5 +1,6 @@
 # Newspaper/News Portal Ad Purchase Wordpress Script
-It's modified WooCommerce template with special functions to receive ad spaces parameters and offers from ad publishers (newspapers/news portals).
+Add this files to your theme folder. Storefront is tested and preffered.
+System built to receive ad spaces parameters and offers from ad publishers (newspapers/news portals).
 
 Ad Buyers can choose what type of ad space they need and compose their own ad campaign.
 1. choose the type of adspace (first page, last page, spreading, standard page, top banner, side banner)
