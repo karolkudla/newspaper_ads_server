@@ -9,6 +9,9 @@ Ad Buyers can choose what type of ad space they need and compose their own ad ca
 5. filter by geolocation
 6. and upload an image for banner.
 
+Admin can set a commision for all prices from publishers in "Commission" page in admin menu.
+All prices for clients are automatically increased by comission %. 
+
 After payment, adspace parameters are sent to all choosed publishers.
 When every of them resend the offers with acceptance or changed publishing dates/other ad space, a new offer is composed and is viewable in "My Orders" Page in user panel. Email with notification is sent too. Now ad buyer, can accept or decline new offer - make a surcharge or wait for excess payment from publishers.
 
